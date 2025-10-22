@@ -1,0 +1,20 @@
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | \venv
+  | build
+  | dist
+  | __pycache__
+  | __init__\.py
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88

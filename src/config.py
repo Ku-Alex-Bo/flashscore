@@ -1,7 +1,9 @@
 LALIGA_MATCHES = "https://www.flashscorekz.com/football/spain/laliga-2024-2025/results/"
 LALIGA_TABLE = "https://www.flashscorekz.com/football/spain/laliga-2024-2025/standings/#/dINOZk9Q/standings/overall/"
 
-APL_MATCHES = "https://www.flashscorekz.com/football/england/premier-league-2024-2025/results/"
+APL_MATCHES = (
+    "https://www.flashscorekz.com/football/england/premier-league-2024-2025/results/"
+)
 APL_TABLE = "https://www.flashscorekz.com/football/england/premier-league-2024-2025/standings/#/lAkHuyP3/standings/overall/"
 
 STAT_API_URL = "https://46.flashscore.ninja/46/x/feed/df_st_1_"
