@@ -1,6 +1,7 @@
 import csv
+import asyncio
 import logging
-from parser import get_matches, get_stat, get_teams
+from parser import get_matches, get_teams, apply_stats_to_teams_async
 
 import config as conf
 from utils import get_corners
@@ -26,17 +27,7 @@ def pipeline():
 
     # 3. Получаем стату по угловым
     logger.info("Получаем стату по угловым...")
-    for match in matches:
-        stat: str = get_stat(match[0])
-        corners: dict = get_corners(stat)
-
-        teams[match[1]].team_corners.append(corners["team_1"])
-        teams[match[1]].enemy_corners.append(corners["team_2"])
-        teams[match[1]].total_corners.append(corners["total"])
-
-        teams[match[2]].team_corners.append(corners["team_2"])
-        teams[match[2]].enemy_corners.append(corners["team_1"])
-        teams[match[2]].total_corners.append(corners["total"])
+    asyncio.run(apply_stats_to_teams_async(teams, matches))
 
     # 4. Сортируем от наибольшего среднего тотала к меньшему:
     logger.info("Сортируем...")
@@ -46,7 +37,7 @@ def pipeline():
 
     # 5. Сохраняем в csv формат
     logger.info("Сохраняем в csv формат")
-    with open("corners.csv", "w", newline="", encoding="utf-8") as f:
+    with open("corners_async.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
             ["team", "avg_total_corners", "avg_team_corners", "avg_enemy_corners"]

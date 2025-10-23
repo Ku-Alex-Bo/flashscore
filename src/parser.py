@@ -1,6 +1,8 @@
 import time
 from typing import Dict, List, Tuple
 
+import asyncio
+import aiohttp
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -11,10 +13,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 import config as conf
 from models import Team
-from utils import get_match_id
+from utils import get_match_id, get_corners
 
 
 def get_teams(url: str) -> Dict[str, Team]:
+    """
+    Парсим команды 
+    - С помощью selenium получаем html
+    - С bs4 находим команды ссылки на команды и русское название 
+    - Из ссылок берем title, team_id
+    - Возвращаем в словаре, где ключ - русское название, значение - объект Team
+    """
     options = Options()
     options.add_argument("--headless=new")
 
@@ -47,6 +56,13 @@ def get_teams(url: str) -> Dict[str, Team]:
 
 
 def get_matches(url: str) -> List[Tuple[str, str, str]]:
+    """
+    Парсим матчи 
+    - С помощью selenium получаем html
+    - С bs4 находим матчи 
+    - С каждого матча берем кортеж вида: (match_id, team_1, team_2)
+    - Возвращаем список кортежей
+    """
     browser = webdriver.Chrome()
     browser.get(url)
 
@@ -94,10 +110,60 @@ def get_matches(url: str) -> List[Tuple[str, str, str]]:
         browser.quit()
 
 
-def get_stat(match_id: str) -> str:
+async def async_get_stat(session: aiohttp.ClientSession, match_id: str, sem: asyncio.Semaphore) -> str | None:
+    """
+    Асинхронный запрос к api flashscore на получение статы по матчу
+    """
     url = conf.STAT_API_URL + match_id
-    response = requests.get(url=url, headers=conf.HEADERS)
-    if response:
-        return response.text
-    else:
-        return None
+    headers = conf.HEADERS
+    async with sem:
+        try:
+            async with session.get(url, headers=headers, timeout=10) as resp:
+                if resp.status == 200:
+                    return await resp.text()
+                return None
+        except Exception:
+            return None
+
+
+async def fetch_stats_for_matches(matches: List[Tuple[str, str, str]], concurrency: int = 10) -> Dict[str, str | None]:
+    """
+    Асинхронно получаем стату на каждый матч
+    matches: список кортежей (match_id, team1, team2)
+    возвращает dict match_id -> stat_text|None
+    """
+    sem = asyncio.Semaphore(concurrency)
+    connector = aiohttp.TCPConnector(limit_per_host=concurrency)
+    timeout = aiohttp.ClientTimeout(total=None)
+
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        tasks = [asyncio.create_task(async_get_stat(session, match_id, sem)) for match_id, *_ in matches]
+        results = await asyncio.gather(*tasks)
+    return {matches[i][0]: results[i] for i in range(len(matches))}
+
+
+async def apply_stats_to_teams_async(teams: dict, matches: List[Tuple[str, str, str]], concurrency: int = 10):
+    """
+    Загружает stat для всех matches параллельно и добавляет угловые в teams.
+    """
+    stats_map = await fetch_stats_for_matches(matches, concurrency=concurrency)
+
+    for match_id, team1_name, team2_name in matches:
+        stat_text = stats_map.get(match_id)
+        if not stat_text:
+            # пропускаем, если stat не получен
+            continue
+
+        corners = get_corners(stat_text)
+        if not corners:
+            continue
+
+        if team1_name in teams:
+            teams[team1_name].team_corners.append(corners["team_1"])
+            teams[team1_name].enemy_corners.append(corners["team_2"])
+            teams[team1_name].total_corners.append(corners["total"])
+
+        if team2_name in teams:
+            teams[team2_name].team_corners.append(corners["team_2"])
+            teams[team2_name].enemy_corners.append(corners["team_1"])
+            teams[team2_name].total_corners.append(corners["total"])
